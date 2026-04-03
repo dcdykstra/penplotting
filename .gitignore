@@ -2,3 +2,4 @@
 images/
 notebooks/
 *.pyc
+.DS_Store
