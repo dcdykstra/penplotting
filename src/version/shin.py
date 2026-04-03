@@ -3,6 +3,9 @@ import numpy as np
 import os
 from src.draw import build_contour_gcode
 
+drawing = False
+brush_size = 5
+
 
 def read_gif(path):
     cap = cv2.VideoCapture(path)
