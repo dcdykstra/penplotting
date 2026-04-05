@@ -9,16 +9,17 @@ def draw_maki():
 
 def draw_shin(clean_manual=False):
     if clean_manual:
-        shin.clean_canny_edges_manual()
+        shin.clean_shin_edges_manual()
     shin.process_shin_gif()
 
 
 def draw_snoopy(clean_manual=False):
     if clean_manual:
-        snoopy.clean_canny_edges_manual()
+        snoopy.clean_snoopy_edges_manual()
+    snoopy.process_snoopy_gif()
 
 
 if __name__ == "__main__":
-    # draw_shin(clean_manual=False)
-    # draw_maki()
-    draw_snoopy(clean_manual=True)
+    draw_shin(clean_manual=False)
+    draw_maki()
+    draw_snoopy(clean_manual=False)

@@ -48,12 +48,12 @@ def process_snoopy_gif():
 
     # Collect per-channel outputs for GIF export
     channel_frames = {
-        "hsv": [],
-        "hue": [],
-        "sat": [],
-        "val": [],
-        "bin": [],
-        "can": [],
+        # "hsv": [],
+        # "hue": [],
+        # "sat": [],
+        # "val": [],
+        # "bin": [],
+        # "can": [],
         "skel": [],
     }
 
@@ -63,27 +63,27 @@ def process_snoopy_gif():
         frame = _crop_snoopy(frame)
         hsv_img = to_hsv(frame)
 
-        channel_frames["hsv"].append(hsv_img)
-        channel_frames["hue"].append(hsv_img[:, :, 0])
-        channel_frames["sat"].append(hsv_img[:, :, 1])
-        channel_frames["val"].append(hsv_img[:, :, 2])
+        # channel_frames["hsv"].append(hsv_img)
+        # channel_frames["hue"].append(hsv_img[:, :, 0])
+        # channel_frames["sat"].append(hsv_img[:, :, 1])
+        # channel_frames["val"].append(hsv_img[:, :, 2])
 
-        cv2.imwrite(f"snoopy/hsv/{i}.png", hsv_img)
-        cv2.imwrite(f"snoopy/hue/{i}.png", hsv_img[:, :, 0])
-        cv2.imwrite(f"snoopy/sat/{i}.png", hsv_img[:, :, 1])
-        cv2.imwrite(f"snoopy/val/{i}.png", hsv_img[:, :, 2])
+        # cv2.imwrite(f"snoopy/hsv/{i}.png", hsv_img)
+        # cv2.imwrite(f"snoopy/hue/{i}.png", hsv_img[:, :, 0])
+        # cv2.imwrite(f"snoopy/sat/{i}.png", hsv_img[:, :, 1])
+        # cv2.imwrite(f"snoopy/val/{i}.png", hsv_img[:, :, 2])
 
         binary = threshold_binary(hsv_img[:, :, 2], thresh=140, invert=True)
-        channel_frames["bin"].append(binary)
-        cv2.imwrite(f"snoopy/bin/{i}.png", binary)
+        # channel_frames["bin"].append(binary)
+        # cv2.imwrite(f"snoopy/bin/{i}.png", binary)
 
         skeleton = hollow_and_skeletonize(binary, thickness_threshold=4.0)
         channel_frames["skel"].append(skeleton)
         cv2.imwrite(f"snoopy/skel/{i}.png", skeleton)
 
         canny = canny_edges(binary)
-        channel_frames["can"].append(canny)
-        cv2.imwrite(f"snoopy/can/{i}.png", canny)
+        # channel_frames["can"].append(canny)
+        # cv2.imwrite(f"snoopy/can/{i}.png", canny)
 
     # Save channel GIFs
     for name, frames in channel_frames.items():
