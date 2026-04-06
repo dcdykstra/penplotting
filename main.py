@@ -20,6 +20,9 @@ def draw_snoopy(clean_manual=False):
 
 
 if __name__ == "__main__":
+    print("Processing shin...")
     draw_shin(clean_manual=False)
+    print("Processing maki...")
     draw_maki()
+    print("Processing snoopy.,,")
     draw_snoopy(clean_manual=False)

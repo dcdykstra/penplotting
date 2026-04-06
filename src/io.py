@@ -3,6 +3,16 @@
 import cv2
 import imageio
 import numpy as np
+import os
+
+
+def list_files_walk(start_path="."):
+    out = []
+    for root, dirs, files in os.walk(start_path):
+        for file in files:
+            if str(os.path.join(root, file)).endswith(".png"):
+                out.append(os.path.join(root, file))
+    return out
 
 
 def read_image(path: str, grayscale: bool = False) -> np.ndarray:

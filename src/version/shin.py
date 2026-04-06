@@ -13,7 +13,7 @@ from src.processing import (
     fuse_mask,
     isolate_by_mask,
     largest_contour_filled_mask,
-    quantize_colors,
+    quantize_masked_colors,
     remove_colors_hsv,
     threshold_binary,
     to_hsv,
@@ -108,5 +108,7 @@ def process_shin_gif():
         cv2.imwrite(f"shin/SAVE10_final_binary_mask/{i}.png", final_binary_mask)
 
         # Color quantization
-        quantized = quantize_colors(character_isolated_final, final_binary_mask, k=5)
+        quantized = quantize_masked_colors(
+            character_isolated_final, final_binary_mask, k=5
+        )
         cv2.imwrite(f"shin/SAVE11_quantized/{i}.png", quantized)

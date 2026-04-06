@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 
 
 def build_contour_svg(contours, img_path):
@@ -48,3 +49,19 @@ def build_contour_gcode(contours, scaling_factor, output_path):
 
     with open(f"{output_path}", "w") as file:
         file.write(path_string)
+
+
+def hatch_lines_to_contour_format(hatch_lines):
+    """
+    Convert hatch line segments into a list of numpy arrays shaped like
+    cv2 contours: each segment becomes an array of shape (2, 1, 2)
+    with the start and end point.
+
+    This makes them compatible with cv2.drawContours and G-code builders
+    that expect contour-like coordinate arrays.
+    """
+    contour_like = []
+    for (x1, y1), (x2, y2) in hatch_lines:
+        segment = np.array([[[int(x1), int(y1)]], [[int(x2), int(y2)]]], dtype=np.int32)
+        contour_like.append(segment)
+    return contour_like

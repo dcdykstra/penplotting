@@ -2,6 +2,7 @@
 
 import cv2
 import numpy as np
+import os
 
 from src.io import read_gif
 from src.processing import (
@@ -105,3 +106,114 @@ def clean_canny_edges_manual(
 
     cv2.destroyAllWindows()
     print("Finished processing all frames!")
+
+
+def interactive_layer_editor(frames, save_dir="snoopy/layers", brush_size=10):
+    """
+    For each frame, isolate each unique color into a binary mask layer,
+    open an interactive cv2 window for manual erasing, then save the
+    cleaned mask.
+
+    Controls:
+        - Left-click + drag: erase (paint black) to remove noise
+        - Right-click + drag: restore (paint white) to undo erasing
+        - Up arrow: increase brush size
+        - Down arrow: decrease brush size
+        - 'r': reset the current layer to the original mask
+        - ESC: save and advance to the next layer/frame
+
+    Saves:
+        {save_dir}/frame_{i}/layer_{j}_bgr_{B}_{G}_{R}.png  (binary mask)
+    """
+    drawing = False
+    draw_color = 0  # 0 = erase, 255 = restore
+    brush = [brush_size]  # mutable so callback can modify
+
+    def _mouse_callback(event, x, y, flags, param):
+        nonlocal drawing, draw_color
+        image = param
+
+        if event == cv2.EVENT_LBUTTONDOWN:
+            drawing = True
+            draw_color = 0  # erase
+            cv2.circle(image, (x, y), brush[0], draw_color, -1)
+        elif event == cv2.EVENT_RBUTTONDOWN:
+            drawing = True
+            draw_color = 255  # restore
+            cv2.circle(image, (x, y), brush[0], draw_color, -1)
+        elif event == cv2.EVENT_MOUSEMOVE and drawing:
+            cv2.circle(image, (x, y), brush[0], draw_color, -1)
+        elif event in (cv2.EVENT_LBUTTONUP, cv2.EVENT_RBUTTONUP):
+            drawing = False
+
+    window_name = (
+        "Layer Editor | L-click=erase, R-click=restore, Up/Down=brush, ESC=next"
+    )
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+
+    print("--- Interactive Layer Editor ---")
+    print("  Left-click:  erase pixels")
+    print("  Right-click: restore pixels")
+    print("  Up arrow:    increase brush size")
+    print("  Down arrow:  decrease brush size")
+    print("  'r':         reset layer to original")
+    print("  ESC:         save layer & advance")
+    print()
+
+    for i, frame in enumerate(frames):
+        unique_colors = np.unique(frame.reshape(-1, 3), axis=0)
+        frame_dir = f"{save_dir}/frame_{i}"
+        os.makedirs(frame_dir, exist_ok=True)
+        if i <= 3:
+            continue
+        print(f"Frame {i + 1}/{len(frames)} — {len(unique_colors)} layers")
+
+        for j, color in enumerate(unique_colors):
+            color_tuple = tuple(color.tolist())
+            b, g, r = color_tuple
+            layer_name = f"layer_{j}_bgr_{b}_{g}_{r}"
+            print(f"  Layer {j + 1}/{len(unique_colors)}: BGR({b}, {g}, {r})")
+
+            # Create binary mask for this color
+            original_mask = np.all(frame == color, axis=2).astype(np.uint8) * 255
+            mask = original_mask.copy()
+
+            cv2.setMouseCallback(window_name, _mouse_callback, mask)
+
+            while True:
+                # Show the mask with a small info bar
+                display = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+                # Tint the display with the actual color for reference
+                tinted = display.copy()
+                tinted[mask > 0] = color
+                cv2.putText(
+                    tinted,
+                    f"Frame {i} | Layer {j}: BGR({b},{g},{r}) | Brush: {brush[0]}",
+                    (10, 25),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 0),
+                    1,
+                )
+                cv2.imshow(window_name, tinted)
+
+                key = cv2.waitKey(1) & 0xFF
+                if key == 27:  # ESC — save and next
+                    break
+                elif key == ord("r"):  # reset
+                    np.copyto(mask, original_mask)
+                    print("    Layer reset.")
+                elif key == 0:  # Up arrow
+                    brush[0] = min(brush[0] + 2, 100)
+                    print(f"  Brush size: {brush[0]}")
+                elif key == 1:  # Down arrow
+                    brush[0] = max(brush[0] - 2, 1)
+                    print(f"  Brush size: {brush[0]}")
+
+            # Save the cleaned mask
+            save_path = f"{frame_dir}/{layer_name}.png"
+            cv2.imwrite(save_path, mask)
+            print(f"    Saved: {save_path}")
+
+    cv2.destroyAllWindows()
+    print("\nAll layers saved!")

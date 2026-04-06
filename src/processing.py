@@ -130,7 +130,7 @@ def remove_colors_hsv(
     return cv2.bitwise_not(combined)
 
 
-def quantize_colors(
+def quantize_masked_colors(
     image: np.ndarray,
     mask: np.ndarray,
     k: int = 5,
@@ -155,3 +155,148 @@ def quantize_colors(
     result = np.zeros_like(image)
     result[mask == 255] = quantized_pixels
     return result
+
+
+def quantize_colors(
+    images: list[np.ndarray],
+    k: int = 5,
+    max_iter: int = 100,
+    epsilon: float = 0.1,
+) -> tuple[list[np.ndarray], np.ndarray]:
+    """Reduce the number of colors across images using a shared K-means palette.
+
+    Pools pixel data from all images, runs K-means once to compute a global
+    palette, then quantizes each image against that palette.
+
+    Args:
+        images: List of BGR images (all must have the same number of channels).
+        k: Number of color clusters.
+        max_iter: Maximum K-means iterations.
+        epsilon: K-means convergence epsilon.
+
+    Returns:
+        A tuple of (quantized_images, global_centers) where
+        ``quantized_images`` is a list of images recolored to the shared
+        palette and ``global_centers`` is the (k, channels) uint8 array of
+        palette colors.
+    """
+    # 1. Pool all pixel data from every image into one array
+    all_pixels = np.vstack(
+        [img.reshape(-1, img.shape[2] if img.ndim == 3 else 1) for img in images]
+    ).astype(np.float32)
+
+    # 2. Run K-means once on the combined pixels to get a shared palette
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, max_iter, epsilon)
+    _, _, global_centers = cv2.kmeans(
+        all_pixels, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS
+    )
+    global_centers = np.uint8(global_centers)
+
+    # 3. Quantize each image using the shared palette
+    quantized_images = []
+    for img in images:
+        pixel_data = img.reshape((-1, img.shape[2] if img.ndim == 3 else 1)).astype(
+            np.float32
+        )
+        distances = np.linalg.norm(
+            pixel_data[:, None] - global_centers[None, :].astype(np.float32), axis=2
+        )
+        labels = np.argmin(distances, axis=1)
+        result = global_centers[labels].reshape(img.shape)
+        quantized_images.append(result)
+
+    return quantized_images, global_centers
+
+
+def generate_crosshatch_lines(contour, spacing=5, angles=[45, -45]):
+    """
+    Generate cross-hatching lines (as coordinate pairs) that fill the interior
+    of a contour. Returns a list of line segments, each as [(x1,y1), (x2,y2)].
+
+    Parameters:
+        contour: a single contour from cv2.findContours
+        spacing: distance in pixels between parallel hatch lines
+        angles: list of angles (degrees) for hatching directions
+                 e.g. [45] for single-direction, [45, -45] for cross-hatch
+
+    Returns:
+        hatch_lines: list of line segments [((x1,y1), (x2,y2)), ...]
+    """
+    # Get bounding rect to know the scan range
+    x, y, w, h = cv2.boundingRect(contour)
+
+    # Create a filled mask of just this contour
+    # Use a tight canvas around the bounding rect for efficiency
+    mask = np.zeros((y + h + 1, x + w + 1), dtype=np.uint8)
+    cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+
+    hatch_lines = []
+
+    for angle_deg in angles:
+        angle_rad = np.radians(angle_deg)
+        cos_a = np.cos(angle_rad)
+        sin_a = np.sin(angle_rad)
+
+        # Center of the bounding box (rotation pivot)
+        cx, cy = x + w / 2.0, y + h / 2.0
+
+        # The diagonal of the bounding box — guarantees full coverage after rotation
+        diag = int(np.ceil(np.sqrt(w**2 + h**2)))
+
+        # Generate parallel lines perpendicular to the angle direction
+        # We sweep offsets from -diag/2 to +diag/2
+        for offset in np.arange(-diag / 2, diag / 2, spacing):
+            # A line at this offset, rotated by `angle`:
+            # The line runs in the direction of `angle`, shifted perpendicular by `offset`
+            # Line parametric: P(t) = center + t*(cos, sin) + offset*(-sin, cos)
+            # We just need two endpoints far enough apart
+            t_range = diag  # half-length of the scan line
+
+            # Perpendicular offset direction
+            px = -sin_a * offset
+            py = cos_a * offset
+
+            # Two endpoints of the scan line (long enough to cross the entire shape)
+            x1 = cx + cos_a * (-t_range) + px
+            y1 = cy + sin_a * (-t_range) + py
+            x2 = cx + cos_a * (t_range) + px
+            y2 = cy + sin_a * (t_range) + py
+
+            # Now clip this line to the filled contour mask by sampling along it
+            # Walk along the line and find segments that are inside the mask
+            num_samples = int(2 * t_range)
+            if num_samples < 2:
+                continue
+
+            ts = np.linspace(0, 1, num_samples)
+            xs = (x1 + (x2 - x1) * ts).astype(int)
+            ys = (y1 + (y2 - y1) * ts).astype(int)
+
+            # Check bounds and mask membership
+            in_bounds = (
+                (xs >= 0) & (xs < mask.shape[1]) & (ys >= 0) & (ys < mask.shape[0])
+            )
+            inside = np.zeros(len(ts), dtype=bool)
+            valid_idx = np.where(in_bounds)[0]
+            inside[valid_idx] = mask[ys[valid_idx], xs[valid_idx]] > 0
+
+            # Extract contiguous segments of "inside" points
+            # Find transitions (entering / leaving the mask)
+            diff = np.diff(inside.astype(int))
+            starts = np.where(diff == 1)[0] + 1  # entering mask
+            ends = np.where(diff == -1)[0]  # leaving mask
+
+            # Handle edge case: line starts inside
+            if inside[0]:
+                starts = np.concatenate(([0], starts))
+            # Handle edge case: line ends inside
+            if inside[-1]:
+                ends = np.concatenate((ends, [len(inside) - 1]))
+
+            for s, e in zip(starts, ends):
+                if e > s:
+                    seg_start = (float(xs[s]), float(ys[s]))
+                    seg_end = (float(xs[e]), float(ys[e]))
+                    hatch_lines.append((seg_start, seg_end))
+
+    return hatch_lines
